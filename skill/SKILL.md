@@ -62,7 +62,8 @@ whatever data it needs by itself.
 6. Conversation reuse depends on `c2c session --json` → `conversation.mode`
    (see Conversation management). Do not invent a second mode.
    - **long-chat** (legacy session file, or the user opted out): ONE ChatGPT
-     conversation per workspace. Never silently start a new chat.
+     conversation per workspace. Reuse it until the user asks to switch or the
+     saved chat is inaccessible or reaches its conversation limit.
    - **project** (new workspaces, or an existing workspace that opted in):
      ONE ChatGPT Project (collection) per workspace. Same Codex conversation
      reuses the ChatGPT chat URL saved in THIS thread. A new Codex
@@ -103,10 +104,24 @@ whatever data it needs by itself.
 Official skill: `control-in-app-browser`. These C2C rules override defaults
 that close the tab, hide the window, or stall on the settings page.
 
-1. **Surface.** Once per Codex session: `setupBrowserRuntime()`, then
-   `const iab = await agent.browsers.get("iab")`. Reuse `iab`. Do not re-read
-   `documentation()` if it is already bound. Never `getDefault()`, `getForUrl()`,
+1. **Surface.** Follow the installed Browser skill to bootstrap the runtime
+   supported by this Codex build. When the skill documents
+   `scripts/browser-client.mjs`, discover the Node REPL JavaScript tool, import
+   the client from the installed plugin's absolute path, and run
+   `setupBrowserRuntime()`. A legacy browser tool is only needed on builds
+   whose Browser skill documents it. Bind and reuse
+   `const iab = await agent.browsers.get("iab")`. Read its complete
+   `documentation()` once. Never `getDefault()`, `getForUrl()`,
    or Computer Use.
+
+**Browser preflight.** A successful doctor checks the workspace bridge and
+public endpoint. Browser startup and ChatGPT access require separate checks.
+If browser startup reports a missing module, report the missing bundled
+artifact. If startup succeeds but selection fails, follow the Browser skill's
+bootstrap troubleshooting and list the supported browsers once. If `iab` is
+still absent or access is denied, report the exact app error and keep the
+connector and saved chat. An app-page backend alone does not provide
+ChatGPT browser control.
 
 2. **One tab.** Create the ChatGPT tab once (`tabs.new()`). After that, only
    `tab.goto(...)` to switch URLs. If the tab still exists, claim it — never
@@ -406,6 +421,30 @@ ONE ChatGPT conversation per workspace. Same as before.
   `session.checkpoint` (goal, progress, issues, next step). If there is no
   checkpoint, use `task` / `iteration` / `lastState` and `execution_summary`
   metadata only. Never paste logs or output bodies.
+
+### Automatic conversation rollover
+
+Apply these steps during navigation, message submission, or reply polling.
+
+A saved chat that shows a conversation-length limit, gives an explicit
+conversation access error, returns 404, or redirects to home after navigation
+settles needs a replacement. Check for a visible login, account/workspace
+mismatch, consent, or rate limit first. Use those recovery paths when present.
+
+1. Retain the saved chat and task checkpoint, including the task ID, iteration,
+   and whether the next reply is a PLAN or independent REVIEW.
+2. In the same tab, click the limit notice's **Start a new chat** control when
+   offered. For Project mode, only use a composer inside the same saved
+   Project. If the control is absent or opens outside that Project, open the
+   saved Project and use its new-chat composer. For long-chat, use a normal Chat.
+3. If the plugin picker is loading, poll every 15 seconds for up to 90 seconds,
+   then reopen it once. If loading stalls again or the exact connector is
+   missing, preserve the checkpoint and report the picker failure.
+4. Boot the new chat and send a compact HANDOFF for the same task and iteration.
+   Require a tool-backed workspace_info reply naming the correct workspace
+   and the full matching PLAN or REVIEW before saving the replacement URL.
+   Leave completed local work in place. Make one replacement attempt per
+   failure and keep the saved URL if the replacement cannot verify access.
 
 ### project (new workspaces)
 
